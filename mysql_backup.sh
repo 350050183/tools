@@ -218,11 +218,9 @@ deleteold(){
 }
 
 deleteold2(){
-cd $mysql_backup_base
-find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
+cd $mysql_backup_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
 
-cd $mysql_backup_inc_base
-find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
+cd $mysql_backup_inc_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
 }
 
 #
