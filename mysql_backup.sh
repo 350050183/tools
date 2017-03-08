@@ -7,14 +7,16 @@
 # SET CONFIGURE IN CRONTAB
 # 0 * * * * /server/scripts/mysql_backup.sh
 #
-# RECOVERY STEPS:1.decompress 2.preparelog 3.restorebackup
+# RESTORE DB USAGE: mysql_backup.sh restorebackup
 #
 # 2015.10 @zg
 #
-full_backup_at=16
+#full backup at 3 AM
+full_backup_at=3
 #CHANGE FOLLOWINGS TO CHANGE TARGET DIR WHEN RESTORE
 cdate=`date +%Y_%m_%d`
 chour=`date +%H`
+#old than 3 days backup file will reomoved
 REMOVEOVERDAYS=3
 
 bin=$(which innobackupex)
@@ -23,11 +25,10 @@ bin15=$(which innobackupex-1.5.1)
 qpress=$(which qpress)
 mysql_port=3306
 mysql_cnf=/etc/my.cnf
-#mysql_data=/var/lib/mysql/
-mysql_data=/mnt/mysql/data/
+mysql_data=/mnt/mysql/
 mysql_user=root
-mysql_pwd=csqwin2win
-#make sure dir not exists at first run.
+mysql_pwd=password
+#make sure dir not exists when run first time.
 mysql_backup_base=/mnt/backup/mysql/base/
 mysql_backup_base_dir=$mysql_backup_base$cdate/
 mysql_backup_inc_base=/mnt/backup/mysql/inc/
@@ -132,7 +133,6 @@ decompress(){
 	cd $mysql_backup_inc_dir
 	for bf in `find . -iname "*\.qp"`; do $qpress -d $bf $(dirname $bf) && rm $bf; done
 	#for XtraBackup 2.1.4
-	#for XtraBackup 2.1.4
 	#innobackupex --decompress /data/backup/2013-08-01_11-24-04/
 }
 
@@ -157,9 +157,12 @@ preparelog(){
 	echo '==============================='
 	echo '>>> Run incremental backup: merge incremental log to the base backup'
 	echo '==============================='
-	echo =========================Run incremental backup: merge incremental lot========================== >>$xtrabackup_log 2>&1
-	$bin --defaults-file=$mysql_cnf --use-memory=1G --apply-log --redo-only $mysql_backup_base_dir --incremental-dir $mysql_backup_inc_dir  >>$xtrabackup_log 2>&1
-		
+	echo =========================Run incremental backup: merge incremental log========================== >>$xtrabackup_log 2>&1
+	#loop all incremental backup files in the save day and merge it
+	for f in `ls $mysql_backup_inc`
+	do
+		$bin --defaults-file=$mysql_cnf --use-memory=1G --apply-log --redo-only $mysql_backup_base_dir --incremental-dir $mysql_backup_inc$f/  >>$xtrabackup_log 2>&1
+	done;	
 	#put all the parts together, you can prepare again the full backup (base + incrementals) once again to rollback the pending transactions
 	echo
 	echo '==============================='
@@ -171,7 +174,10 @@ preparelog(){
 }
 
 
-resotrebackup(){
+restorebackup(){
+	#step 1: decompress and prepare log
+	preparelog
+	#step 2: hare copy
 	$bin --copy-back $mysql_backup_base_dir
 	chown -R mysql:mysql $mysql_data
 }
@@ -223,9 +229,9 @@ deleteold(){
 }
 
 deleteold2(){
-cd $mysql_backup_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec ls -l >> $xtrabackup_log {} \;
+cd $mysql_backup_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
 
-cd $mysql_backup_inc_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec ls -l >> $xtrabackup_log {} \;
+cd $mysql_backup_inc_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVEOVERDAYS - 1 ) -regex './[0-9][0-9][0-9][0-9]_[0-9][0-9]_[0-9][0-9]' -exec rm -rf {} \;
 }
 
 #
@@ -233,12 +239,21 @@ cd $mysql_backup_inc_base && find ./ -maxdepth 1 -type d -ctime +$( expr $REMOVE
 #
 if [ -f $bin ];then
 	echo $cdatetime =========================BEGIN========================== >>$xtrabackup_log 2>&1
-	check_env
-	fullback
-	incrementalbackup
-	deleteold2
+
+	if [ $1 == "" ];then
+		check_env
+		fullback
+		incrementalbackup
+		deleteold2
+	fi;
+	if [ $1 == "restorebackup" ];then
+		echo "restore backup"
+		restorebackup
+	fi;
+
 	#deleteold $mysql_backup_base
 	#deleteold $mysql_backup_inc_base
+
 	echo $cdatetime =========================END========================== >>$xtrabackup_log 2>&1
 else
 	echo 'innobackupex not found.'
